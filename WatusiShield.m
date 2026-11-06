@@ -9,7 +9,6 @@
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
 #import <mach-o/nlist.h>
-#import <mach-o/indirect_symbols.h>
 #import <sys/icache.h>
 #import <string.h>
 #import <stdlib.h>
@@ -23,6 +22,13 @@ typedef struct segment_command_64 segment_command_t;
 typedef struct section_64 section_t;
 typedef struct nlist_64 nlist_t;
 #define AC_LC_SEGMENT LC_SEGMENT_64
+
+#ifndef INDIRECT_SYMBOL_LOCAL
+#define INDIRECT_SYMBOL_LOCAL 0x80000000u
+#endif
+#ifndef INDIRECT_SYMBOL_ABS
+#define INDIRECT_SYMBOL_ABS 0x40000000u
+#endif
 
 #pragma mark - fishhook（内联实现，针对单镜像改绑）
 

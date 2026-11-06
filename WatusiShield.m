@@ -9,7 +9,7 @@
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
 #import <mach-o/nlist.h>
-#import <sys/icache.h>
+#import <libkern/OSCacheControl.h>
 #import <string.h>
 #import <stdlib.h>
 

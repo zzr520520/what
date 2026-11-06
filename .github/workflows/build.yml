@@ -1,0 +1,31 @@
+name: Build WatusiShield
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build dylib (arm64, iphoneos SDK)
+        run: |
+          set -e
+          xcrun -sdk iphoneos clang -arch arm64 -shared \
+            -fobjc-arc -O2 \
+            -framework Foundation \
+            -install_name "@rpath/WatusiShield.dylib" \
+            -o WatusiShield.dylib WatusiShield.m
+          codesign -f -s - WatusiShield.dylib
+          file WatusiShield.dylib
+          ls -la WatusiShield.dylib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WatusiShield
+          path: WatusiShield.dylib

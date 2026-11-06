@@ -5,11 +5,23 @@
 
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
+#if __has_feature(ptrauth_calls)
+#include <ptrauth.h>
+#endif
 
 typedef int (*MSHookFuncPtr)(void *symbol, void *replace, void **result);
 
 static void (*orig_objc_exception_throw)(id exception) = NULL;
 static MSHookFuncPtr ac_hookFunc = NULL;
+
+// —— PAC 崩溃修复 ——
+// libWatusiToolsSL(arm64) 在 ARM64e(A17 Pro) 设备上调用 Foundation 私有 _userInfoForFileAndLine
+// 时指针签名校验失败 → EXC_BAD_ACCESS(SIGSEGV)。拦截该函数直接返回 nil，避开系统内部指针解引用。
+static id (*orig_userInfoForFileAndLine)(id, ...) = NULL;
+
+static id AC_fake_userInfoForFileAndLine(id a0, ...) {
+    return nil; // 直接返回，不走原函数的 PAC 敏感路径
+}
 
 #pragma mark - 命中过滤：调用栈来自 Watusi 则吞掉
 
@@ -97,10 +109,30 @@ static void WatusiShieldInit(void) {
             if (rc == 0 && orig_objc_exception_throw) {
                 NSLog(@"[WatusiShield] ✅ objc_exception_throw inline hook 挂载成功 (MSHookFunction)");
             } else {
-                NSLog(@"[WatusiShield] ❌ hook 返回 %d，防护未挂载", rc);
+                NSLog(@"[WatusiShield] ❌ hook 返回 %d，异常防护未挂载", rc);
             }
         } else {
             NSLog(@"[WatusiShield] ⚠️ 未找到任何 Hook 引擎(MSHookFunction)，仅保留未捕获异常日志");
+        }
+
+        // —— 方案一：Hook Foundation 私有 _userInfoForFileAndLine，根治 PAC 崩溃 ——
+        void *uiSym = dlsym(RTLD_DEFAULT, "_userInfoForFileAndLine");
+        if (!uiSym) {
+            void *fwn = dlopen("/System/Library/Frameworks/Foundation.framework/Foundation", RTLD_NOW);
+            if (fwn) uiSym = dlsym(fwn, "_userInfoForFileAndLine");
+        }
+        if (uiSym && ac_hookFunc) {
+#if __has_feature(ptrauth_calls)
+            uiSym = ptrauth_strip(uiSym, ptrauth_key_function_pointer);
+#endif
+            int rc2 = ac_hookFunc(uiSym, (void *)AC_fake_userInfoForFileAndLine, (void **)&orig_userInfoForFileAndLine);
+            if (rc2 == 0) {
+                NSLog(@"[WatusiShield] ✅ _userInfoForFileAndLine hook 挂载成功，PAC 崩溃点已屏蔽");
+            } else {
+                NSLog(@"[WatusiShield] ❌ _userInfoForFileAndLine hook 返回 %d", rc2);
+            }
+        } else {
+            NSLog(@"[WatusiShield] ⚠️ _userInfoForFileAndLine 未找到或无 Hook 引擎，PAC 修复未挂载");
         }
     }
 }
